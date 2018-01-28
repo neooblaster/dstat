@@ -277,14 +277,14 @@ Dstat options:
   -c, --cpu                enable cpu stats
      -C 0,3,total             include cpu0, cpu3 and total
   -d, --disk               enable disk stats
-     -D total,hda             include hda and total
+     -D sum,total,hda         include hda, total and sum for defined delay
   -g, --page               enable page stats
   -i, --int                enable interrupt stats
      -I 5,eth2                include int5 and interrupt used by eth2
   -l, --load               enable load stats
   -m, --mem                enable memory stats
   -n, --net                enable network stats
-     -N eth1,total            include eth1 and total
+     -N eth1,total,sum        include eth1, total and sum for defined delay
   -p, --proc               enable process stats
   -r, --io                 enable io stats (I/O requests completed)
   -s, --swap               enable swap stats
@@ -831,7 +831,7 @@ class dstat_disk(dstat):
 #           if len(varlist) > 2: varlist = varlist[0:2]
             varlist.sort()
         for name in varlist:
-            if name in self.discover + ['total'] or name in op.diskset:
+            if name in self.discover + ['total', 'sum'] or name in op.diskset:
                 ret.append(name)
         return ret
 
@@ -839,6 +839,9 @@ class dstat_disk(dstat):
         return ['dsk/'+sysfs_dev(name) for name in self.vars]
 
     def extract(self):
+        # If count loop start, reset sum data
+        if 'sum' in self.val: sum = (self.val['sum'], (0, 0))[step == 1]
+
         for name in self.vars: self.set2[name] = (0, 0)
         for l in self.splitlines():
             if len(l) < 13: continue
@@ -847,7 +850,7 @@ class dstat_disk(dstat):
             if l[3:] == ['0',] * 11: continue
             if not self.diskfilter.match(name):
                 self.set2['total'] = ( self.set2['total'][0] + long(l[5]), self.set2['total'][1] + long(l[9]) )
-            if name in self.vars and name != 'total':
+            if name in self.vars and name != 'total' and name != 'sum':
                 self.set2[name] = ( self.set2[name][0] + long(l[5]), self.set2[name][1] + long(l[9]) )
             for diskset in self.vars:
                 if diskset in op.diskset:
@@ -857,6 +860,11 @@ class dstat_disk(dstat):
 
         for name in self.set2:
             self.val[name] = map(lambda x, y: (y - x) * 512.0 / elapsed, self.set1[name], self.set2[name])
+
+        # Make sum from total field
+        if 'sum' in self.val:
+            for i, ioval in enumerate(self.val['sum']):
+                self.val['sum'][i] = sum[i] + self.val['total'][i]
 
         if step == op.delay:
             self.set1.update(self.set2)
@@ -917,7 +925,7 @@ class dstat_disk24(dstat):
 #           if len(varlist) > 2: varlist = varlist[0:2]
             varlist.sort()
         for name in varlist:
-            if name in self.discover + ['total'] or name in op.diskset:
+            if name in self.discover + ['total', 'sum'] or name in op.diskset:
                 ret.append(name)
         return ret
 
@@ -925,13 +933,16 @@ class dstat_disk24(dstat):
         return ['dsk/'+sysfs_dev(name) for name in self.vars]
 
     def extract(self):
+        # If count loop start, reset sum data
+        if 'sum' in self.val: sum = (self.val['sum'], (0, 0))[step == 1]
+
         for name in self.vars: self.set2[name] = (0, 0)
         for l in self.splitlines():
             if len(l) < 15 or l[0] == 'major' or int(l[1]) % 16 != 0: continue
             name = l[3]
             if not self.diskfilter.match(name):
                 self.set2['total'] = ( self.set2['total'][0] + long(l[6]), self.set2['total'][1] + long(l[10]) )
-            if name in self.vars:
+            if name in self.vars and name != 'sum':
                 self.set2[name] = ( self.set2[name][0] + long(l[6]), self.set2[name][1] + long(l[10]) )
             for diskset in self.vars:
                 if diskset in op.diskset:
@@ -941,6 +952,11 @@ class dstat_disk24(dstat):
 
         for name in self.set2:
             self.val[name] = map(lambda x, y: (y - x) * 512.0 / elapsed, self.set1[name], self.set2[name])
+
+        # Make sum from total field
+        if 'sum' in self.val:
+            for i, ioval in enumerate(self.val['sum']):
+                self.val['sum'][i] = sum[i] + self.val['total'][i]
 
         if step == op.delay:
             self.set1.update(self.set2)
@@ -988,7 +1004,7 @@ class dstat_disk24_old(dstat):
 #           if len(varlist) > 2: varlist = varlist[0:2]
             varlist.sort()
         for name in varlist:
-            if name in self.discover + ['total'] or name in op.diskset:
+            if name in self.discover + ['total', 'sum'] or name in op.diskset:
                 ret.append(name)
         return ret
 
@@ -996,6 +1012,9 @@ class dstat_disk24_old(dstat):
         return ['dsk/'+name for name in self.vars]
 
     def extract(self):
+        # If count loop start, reset sum data
+        if 'sum' in self.val: sum = (self.val['sum'], (0, 0))[step == 1]
+
         for name in self.vars: self.set2[name] = (0, 0)
         for line in self.splitlines(':'):
             if len(l) < 3: continue
@@ -1009,7 +1028,7 @@ class dstat_disk24_old(dstat):
                 name = dev(int(l[0]), int(l[1]))
                 if not self.diskfilter.match(name):
                     self.set2['total'] = ( self.set2['total'][0] + long(l[2]), self.set2['total'][1] + long(l[3]) )
-                if name in self.vars and name != 'total':
+                if name in self.vars and name != 'total' and name != 'sum':
                     self.set2[name] = ( self.set2[name][0] + long(l[2]), self.set2[name][1] + long(l[3]) )
                 for diskset in self.vars:
                     if diskset in op.diskset:
@@ -1020,6 +1039,11 @@ class dstat_disk24_old(dstat):
 
         for name in self.set2:
             self.val[name] = map(lambda x, y: (y - x) * 512.0 / elapsed, self.set1[name], self.set2[name])
+
+        # Make sum from total field
+        if 'sum' in self.val:
+            for i, ioval in enumerate(self.val['sum']):
+                self.val['sum'][i] = sum[i] + self.val['total'][i]
 
         if step == op.delay:
             self.set1.update(self.set2)
@@ -1375,7 +1399,7 @@ class dstat_net(dstat):
 #           if len(varlist) > 2: varlist = varlist[0:2]
             varlist.sort()
         for name in varlist:
-            if name in self.discover + ['total', 'lo']:
+            if name in self.discover + ['total', 'sum', 'lo']:
                 ret.append(name)
         if not ret:
             raise Exception, "No suitable network interfaces found to monitor"
@@ -1385,6 +1409,9 @@ class dstat_net(dstat):
         return ['net/'+name for name in self.vars]
 
     def extract(self):
+        # If count loop start, reset sum data
+        if 'sum' in self.val: sum = (self.val['sum'], (0, 0))[step == 1]
+
         self.set2['total'] = [0, 0]
         for l in self.splitlines(replace=':'):
             if len(l) < 17: continue
@@ -1400,6 +1427,11 @@ class dstat_net(dstat):
                 self.val[name] = map(lambda x, y: (y - x) * 1.0 / elapsed, self.set1[name], self.set2[name])
                 if self.val[name][0] < 0: self.val[name][0] += maxint + 1
                 if self.val[name][1] < 0: self.val[name][1] += maxint + 1
+
+        # Make sum from total field
+        if 'sum' in self.val:
+            for i, ioval in enumerate(self.val['sum']):
+                self.val['sum'][i] = sum[i] + self.val['total'][i]
 
         if step == op.delay:
             self.set1.update(self.set2)
@@ -2620,6 +2652,7 @@ def main():
     ### Build list of requested plugins
     linewidth = 0
     totlist = []
+    # totlist = []
     for plugin in op.plugins:
 
         ### Set up fallback lists
